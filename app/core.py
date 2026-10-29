@@ -11,8 +11,9 @@ from sqlalchemy.pool import NullPool
 
 def _database_url() -> str:
     url = os.getenv("DATABASE_URL", "").strip() or "sqlite:///./hrms.db"
-    if url.startswith("postgres://"):
-        url = "postgresql://" + url[len("postgres://"):]
+    for prefix in ("postgres://", "postgresql://"):
+        if url.startswith(prefix):
+            url = "postgresql+psycopg://" + url[len(prefix):]
     return url
 
 
@@ -29,7 +30,10 @@ if IS_SQLITE:
     engine = create_engine(DATABASE_URL, connect_args={"check_same_thread": False})
 else:
     # Serverless functions open short-lived connections; let the DB provider pool them.
-    engine = create_engine(DATABASE_URL, poolclass=NullPool, pool_pre_ping=True)
+    engine = create_engine(
+        DATABASE_URL, poolclass=NullPool, pool_pre_ping=True,
+        connect_args={"prepare_threshold": None},  # safe behind Neon's pooler
+    )
 
 SessionLocal = sessionmaker(engine, autoflush=False, expire_on_commit=False)
 
