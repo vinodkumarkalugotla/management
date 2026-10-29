@@ -49,13 +49,20 @@
 <div id="app" v-cloak>
 
   <!-- ===== Login ===== -->
-  <div v-if="!me" class="login card">
-    <h2>Own HRMS - Sign in</h2>
+  <div v-if="!me && !portal" class="login card">
+    <h2>Own HRMS</h2>
+    <p class="muted">Who are you signing in as?</p>
+    <button v-for="p in portals" :key="p.id" class="btn ghost big" style="width:100%; margin-bottom:10px" @click="portal = p.id">{{ p.label }}</button>
+  </div>
+
+  <div v-else-if="!me" class="login card">
+    <h2>{{ portalLabel }} sign in</h2>
     <form @submit.prevent="login">
       <label>Email <input v-model="loginForm.email" type="email" required autofocus></label>
       <label>Password <input v-model="loginForm.password" type="password" required></label>
       <button class="btn" style="width:100%">Log in</button>
     </form>
+    <p style="text-align:center"><a href="#" @click.prevent="portal = null">&larr; Choose a different role</a></p>
   </div>
 
   <template v-else>
@@ -307,7 +314,8 @@ Vue.createApp({
   data() {
     return {
       token: localStorage.getItem('hrms_token'), me: null, tab: 'attendance', toast: { msg: '', err: false },
-      loginForm: { email: '', password: '' },
+      loginForm: { email: '', password: '' }, portal: null,
+      portals: [{ id: 'employee', label: 'Employee' }, { id: 'manager', label: 'Manager' }, { id: 'hr', label: 'HR' }],
       today: { checked_in: false, since: null }, month: today0().slice(0, 7), records: [], attScope: 'mine', attEmployee: '', editing: null,
       employees: [], approvers: [], leaveTypes: [], balance: [], myLeave: [], leaveForm: this.blankLeave(),
       approvals: [], approvalStatus: 'pending',
@@ -316,6 +324,7 @@ Vue.createApp({
     };
   },
   computed: {
+    portalLabel() { const p = this.portals.find(p => p.id === this.portal); return p ? p.label : ''; },
     canManage() { return this.me && (this.me.role === 'hr' || this.me.role === 'manager'); },
     tabs() {
       const t = [{ id: 'attendance', label: 'Attendance' }, { id: 'leave', label: 'Leave' }, { id: 'onboarding', label: 'Onboarding' }];
@@ -355,13 +364,13 @@ Vue.createApp({
     // ---- session ----
     async login() {
       await this.run(async () => {
-        const r = await this.api('/auth/login', 'POST', this.loginForm);
+        const r = await this.api('/auth/login', 'POST', { ...this.loginForm, role: this.portal });
         this.token = r.token; this.me = r.user; localStorage.setItem('hrms_token', r.token);
         this.loginForm.password = '';
         await this.afterLogin();
       });
     },
-    logout() { this.token = null; this.me = null; localStorage.removeItem('hrms_token'); },
+    logout() { this.token = null; this.me = null; this.portal = null; localStorage.removeItem('hrms_token'); },
     async afterLogin() {
       this.tab = 'attendance';
       this.leaveTypes = await this.api('/leave-types');

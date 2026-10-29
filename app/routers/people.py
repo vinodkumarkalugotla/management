@@ -32,6 +32,7 @@ def user_json(u: User) -> dict:
 class LoginIn(BaseModel):
     email: str
     password: str
+    role: Optional[str] = None  # portal chosen on the login screen
 
 
 @router.post("/auth/login")
@@ -39,6 +40,8 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
     user = db.scalar(select(User).where(User.email == body.email.strip().lower()))
     if not user or not user.is_active or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, "Wrong email or password")
+    if body.role and body.role != user.role:
+        raise HTTPException(403, f"This account is not a{'n' if user.role == 'employee' else ''} {user.role} account. Go back and choose the right portal.")
     return {"token": make_token(user.id), "user": user_json(user)}
 
 
