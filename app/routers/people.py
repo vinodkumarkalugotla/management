@@ -41,7 +41,8 @@ def login(body: LoginIn, db: Session = Depends(get_db)):
     if not user or not user.is_active or not verify_password(body.password, user.password_hash):
         raise HTTPException(401, "Wrong email or password")
     if body.role and body.role != user.role:
-        raise HTTPException(403, f"This account is not a{'n' if user.role == 'employee' else ''} {user.role} account. Go back and choose the right portal.")
+        label = {"employee": "an employee", "manager": "a manager", "hr": "an HR"}[user.role]
+        raise HTTPException(403, f"This account is {label} account. Go back and choose the right portal.")
     return {"token": make_token(user.id), "user": user_json(user)}
 
 
