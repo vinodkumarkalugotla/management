@@ -43,6 +43,12 @@
   .loadbar { position:fixed; top:0; left:0; right:0; height:3px; z-index:10; background:linear-gradient(90deg, transparent, var(--brand), transparent); background-size:50% 100%; background-repeat:no-repeat; animation:slide 1s linear infinite; }
   @keyframes slide { from { background-position:-50% 0; } to { background-position:150% 0; } }
   .busy > *:not(.overlay) button.btn { pointer-events:none; opacity:.6; }
+  /* the clicked button shows a spinner while its action runs */
+  button.btn.loading, label.btn.loading { position:relative; color:transparent !important; pointer-events:none; }
+  button.btn.loading::after, label.btn.loading::after { content:''; position:absolute; left:50%; top:50%; width:16px; height:16px; margin:-8px 0 0 -8px; border:2px solid #fff; border-top-color:transparent; border-radius:50%; animation:spin .7s linear infinite; }
+  button.btn.ghost.loading::after { border-color:var(--brand); border-top-color:transparent; }
+  .busy > *:not(.overlay) button.btn.loading { opacity:1; }
+  @keyframes spin { to { transform:rotate(360deg); } }
   .dialog { text-align:left; min-width:300px; border-top-color:var(--brand); }
   .dialog h3 { margin:0 0 12px; font-size:17px; }
   .dialog label { margin-bottom:12px; }
@@ -164,10 +170,10 @@
                 </template>
                 <template v-else>
                   <td>{{ time(r.check_in) }}</td>
-                  <td>{{ r.check_out ? time(r.check_out) : 'still in' }}</td>
+                  <td><b v-if="!r.check_out" style="color:var(--ok)">still in</b><template v-else>{{ time(r.check_out) }}</template></td>
                   <td>{{ r.check_out ? hm(minutesOf(r)) : '-' }}</td>
                 </template>
-                <td v-if="i===0" :rowspan="g.sessions.length"><b>{{ hm(g.minutes) }}</b><span v-if="g.open" class="muted"> + running</span></td>
+                <td v-if="i===0" :rowspan="g.sessions.length"><b>{{ hm(g.minutes) }}</b><b v-if="g.open" style="color:var(--ok)"> + running</b></td>
                 <td v-if="me.role==='hr' && attScope==='team'">
                   <template v-if="editing && editing.id===r.id">
                     <button class="btn sm ok" @click="run(saveEdit)">Save</button> <button class="btn sm ghost" @click="editing=null">Cancel</button>
@@ -406,6 +412,11 @@ Vue.createApp({
     viewEmployeeName() { const e = this.employees.find(e => e.id === this.viewEmployee); return e ? e.name : ''; },
   },
   async mounted() {
+    // remember which button was clicked so run() can show a spinner on it
+    document.addEventListener('click', e => {
+      const el = e.target.closest('button.btn, label.btn');
+      if (el) this._clicked = { el, at: Date.now() };
+    }, true);
     if (this.token) { try { this.me = await this.api('/me'); await this.afterLogin(); } catch { this.logout(); } }
   },
   methods: {
@@ -426,8 +437,12 @@ Vue.createApp({
       d.resolve(ok ? Object.fromEntries(d.fields.map(f => [f.key, f.value])) : null);
     },
     async run(fn) {
+      const c = this._clicked;
+      const btn = c && Date.now() - c.at < 800 ? c.el : null;
+      this._clicked = null;
+      if (btn) btn.classList.add('loading');
       this.busy++;
-      try { await fn(); } catch (e) { this.flash(e.message, true); } finally { this.busy--; }
+      try { await fn(); } catch (e) { this.flash(e.message, true); } finally { this.busy--; if (btn) btn.classList.remove('loading'); }
     },
 
     async api(path, method = 'GET', body) {
