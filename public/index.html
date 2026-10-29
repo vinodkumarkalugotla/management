@@ -38,8 +38,12 @@
   .stat { border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
   .stat b { font-size:22px; display:block; }
   .muted { color:var(--muted); font-size:13px; }
-  .toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); padding:10px 18px; border-radius:8px; color:#fff; background:var(--ok); z-index:9; max-width:90vw; }
-  .toast.err { background:var(--bad); }
+  .overlay { position:fixed; inset:0; background:rgba(15,23,42,.45); display:flex; align-items:center; justify-content:center; z-index:9; padding:20px; }
+  .popup { background:#fff; border-radius:12px; padding:24px 28px; min-width:260px; max-width:420px; text-align:center; box-shadow:0 12px 40px rgba(0,0,0,.25); border-top:5px solid var(--ok); }
+  .popup.err { border-top-color:var(--bad); }
+  .popup .icon { font-size:34px; line-height:1; color:var(--ok); }
+  .popup.err .icon { color:var(--bad); }
+  .popup p { margin:10px 0 16px; font-size:16px; }
   .login { max-width:340px; margin:12vh auto; }
   .login label { margin-bottom:10px; }
   .big { font-size:17px; padding:12px 26px; }
@@ -302,7 +306,13 @@
     </main>
   </template>
 
-  <div v-if="toast.msg" class="toast" :class="{err: toast.err}">{{ toast.msg }}</div>
+  <div v-if="toast.msg" class="overlay" @click.self="toast.msg = ''">
+    <div class="popup" :class="{err: toast.err}">
+      <div class="icon">{{ toast.err ? '&#10007;' : '&#10003;' }}</div>
+      <p>{{ toast.msg }}</p>
+      <button class="btn" @click="toast.msg = ''">OK</button>
+    </div>
+  </div>
 </div>
 
 <script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
@@ -343,7 +353,7 @@ Vue.createApp({
     blankEmp() { return { name: '', email: '', password: '', role: 'employee', approver_id: null, join_date: today0() }; },
     time(iso) { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); },
     dateTime(iso) { return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); },
-    flash(msg, err = false) { this.toast = { msg, err }; clearTimeout(this._t); this._t = setTimeout(() => this.toast.msg = '', 3500); },
+    flash(msg, err = false) { this.toast = { msg, err }; clearTimeout(this._t); if (!err) this._t = setTimeout(() => this.toast.msg = '', 2500); },
     async run(fn) { try { await fn(); } catch (e) { this.flash(e.message, true); } },
 
     async api(path, method = 'GET', body) {
