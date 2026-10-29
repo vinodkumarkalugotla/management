@@ -26,6 +26,28 @@
   button.btn.ok { background:var(--ok); border-color:var(--ok); }
   button.btn.sm { padding:3px 9px; font-size:13px; }
   button.btn:disabled { opacity:.5; cursor:default; }
+  /* click feedback */
+  button, label.btn, nav button, a { transition: background-color .15s, filter .15s, transform .08s, box-shadow .15s, color .15s; }
+  button.btn, label.btn { cursor:pointer; user-select:none; }
+  button.btn:hover:not(:disabled), label.btn:hover { filter:brightness(1.1); box-shadow:0 2px 8px rgba(0,0,0,.18); }
+  button.btn.ghost:hover:not(:disabled), label.btn.ghost:hover { background:#eef3ff; filter:none; }
+  button.btn:active:not(:disabled), label.btn:active { transform:scale(.95); box-shadow:none; filter:brightness(.92); }
+  button:focus-visible, label.btn:focus-within, input:focus-visible, select:focus-visible { outline:2px solid var(--brand); outline-offset:2px; }
+  nav button:hover { background:#eef3ff; color:var(--brand); }
+  nav button:active { transform:scale(.96); }
+  a { color:var(--brand); }
+  a:hover { text-decoration:underline; }
+  tr:hover td { background:#fafbfd; }
+  table.att tbody { border-bottom:2px solid var(--line); }
+  table.att tbody tr:hover td { background:inherit; }
+  .loadbar { position:fixed; top:0; left:0; right:0; height:3px; z-index:10; background:linear-gradient(90deg, transparent, var(--brand), transparent); background-size:50% 100%; background-repeat:no-repeat; animation:slide 1s linear infinite; }
+  @keyframes slide { from { background-position:-50% 0; } to { background-position:150% 0; } }
+  .busy > *:not(.overlay) button.btn { pointer-events:none; opacity:.6; }
+  .dialog { text-align:left; min-width:300px; border-top-color:var(--brand); }
+  .dialog h3 { margin:0 0 12px; font-size:17px; }
+  .dialog label { margin-bottom:12px; }
+  .dialog input { width:100%; }
+  .dialog .actions { display:flex; gap:10px; justify-content:flex-end; margin-top:6px; }
   table { width:100%; border-collapse:collapse; }
   th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
   th { font-size:12px; color:var(--muted); font-weight:600; }
@@ -50,7 +72,23 @@
 </style>
 </head>
 <body>
-<div id="app" v-cloak>
+<div id="app" v-cloak :class="{busy: busy > 0}">
+  <div v-if="busy > 0 && !dialog" class="loadbar"></div>
+
+  <!-- centered replacement for browser prompt()/confirm() -->
+  <div v-if="dialog" class="overlay" @click.self="closeDialog(false)">
+    <form class="popup dialog" @submit.prevent="closeDialog(true)">
+      <h3>{{ dialog.title }}</h3>
+      <p v-if="dialog.message" style="margin:0 0 14px">{{ dialog.message }}</p>
+      <label v-for="(f, i) in dialog.fields" :key="f.key">{{ f.label }}
+        <input v-model="f.value" :type="f.type || 'text'" :autofocus="i === 0">
+      </label>
+      <div class="actions">
+        <button type="button" class="btn ghost" @click="closeDialog(false)">Cancel</button>
+        <button class="btn">OK</button>
+      </div>
+    </form>
+  </div>
 
   <!-- ===== Login ===== -->
   <div v-if="!me && !portal" class="login card">
@@ -110,27 +148,37 @@
               </label>
             </template>
           </div>
-          <div class="scroll"><table>
-            <tr><th v-if="attScope==='team'">Employee</th><th>Check in</th><th>Check out</th><th>Hours</th><th v-if="me.role==='hr' && attScope==='team'"></th></tr>
-            <tr v-for="r in records" :key="r.id">
-              <template v-if="editing && editing.id===r.id">
-                <td v-if="attScope==='team'">{{ r.employee }}</td>
-                <td><input type="datetime-local" v-model="editing.check_in"></td>
-                <td><input type="datetime-local" v-model="editing.check_out"></td>
-                <td></td>
-                <td><button class="btn sm ok" @click="run(saveEdit)">Save</button> <button class="btn sm ghost" @click="editing=null">Cancel</button></td>
-              </template>
-              <template v-else>
-                <td v-if="attScope==='team'">{{ r.employee }}</td>
-                <td>{{ dateTime(r.check_in) }}</td>
-                <td>{{ r.check_out ? dateTime(r.check_out) : 'still in' }}</td>
-                <td>{{ r.hours ?? '-' }}</td>
-                <td v-if="me.role==='hr' && attScope==='team'"><button class="btn sm ghost" @click="startEdit(r)">Correct</button></td>
-              </template>
+          <div class="scroll"><table class="att">
+            <tr>
+              <th v-if="attScope==='team'">Employee</th><th>Date</th><th>Check in</th><th>Check out</th><th>Time worked</th><th>Total work</th>
+              <th v-if="me.role==='hr' && attScope==='team'"></th>
             </tr>
-            <tr v-if="!records.length"><td colspan="5" class="muted">No records for this month.</td></tr>
+            <tbody v-for="g in groups" :key="g.key">
+              <tr v-for="(r, i) in g.sessions" :key="r.id">
+                <td v-if="i===0 && attScope==='team'" :rowspan="g.sessions.length">{{ r.employee }}</td>
+                <td v-if="i===0" :rowspan="g.sessions.length"><b>{{ dateOnly(r.check_in) }}</b></td>
+                <template v-if="editing && editing.id===r.id">
+                  <td><input type="datetime-local" v-model="editing.check_in"></td>
+                  <td><input type="datetime-local" v-model="editing.check_out"></td>
+                  <td></td>
+                </template>
+                <template v-else>
+                  <td>{{ time(r.check_in) }}</td>
+                  <td>{{ r.check_out ? time(r.check_out) : 'still in' }}</td>
+                  <td>{{ r.check_out ? hm(minutesOf(r)) : '-' }}</td>
+                </template>
+                <td v-if="i===0" :rowspan="g.sessions.length"><b>{{ hm(g.minutes) }}</b><span v-if="g.open" class="muted"> + running</span></td>
+                <td v-if="me.role==='hr' && attScope==='team'">
+                  <template v-if="editing && editing.id===r.id">
+                    <button class="btn sm ok" @click="run(saveEdit)">Save</button> <button class="btn sm ghost" @click="editing=null">Cancel</button>
+                  </template>
+                  <button v-else class="btn sm ghost" @click="startEdit(r)">Correct</button>
+                </td>
+              </tr>
+            </tbody>
+            <tr v-if="!records.length"><td colspan="7" class="muted">No records for this month.</td></tr>
           </table></div>
-          <p class="muted" v-if="records.length">Total hours: {{ totalHours }}</p>
+          <p class="muted" v-if="records.length">Total time: {{ totalHours }}</p>
         </div>
       </section>
 
@@ -324,7 +372,7 @@ Vue.createApp({
   data() {
     return {
       token: localStorage.getItem('hrms_token'), me: null, tab: 'attendance', toast: { msg: '', err: false },
-      loginForm: { email: '', password: '' }, portal: null,
+      busy: 0, dialog: null, loginForm: { email: '', password: '' }, portal: null,
       portals: [{ id: 'employee', label: 'Employee' }, { id: 'manager', label: 'Manager' }, { id: 'hr', label: 'HR' }],
       today: { checked_in: false, since: null }, month: today0().slice(0, 7), records: [], attScope: 'mine', attEmployee: '', editing: null,
       employees: [], approvers: [], leaveTypes: [], balance: [], myLeave: [], leaveForm: this.blankLeave(),
@@ -342,7 +390,19 @@ Vue.createApp({
       if (this.me && this.me.role === 'hr') t.push({ id: 'employees', label: 'Employees' });
       return t;
     },
-    totalHours() { return this.records.reduce((s, r) => s + (r.hours || 0), 0).toFixed(2); },
+    /** One group per employee per day; sessions in time order, days newest first. */
+    groups() {
+      const map = new Map();
+      for (const r of this.records) {
+        const key = r.employee_id + '|' + new Date(r.check_in).toLocaleDateString('en-CA');
+        if (!map.has(key)) map.set(key, { key, sessions: [], minutes: 0, open: false });
+        const g = map.get(key);
+        g.sessions.unshift(r);
+        if (r.check_out) g.minutes += this.minutesOf(r); else g.open = true;
+      }
+      return [...map.values()];
+    },
+    totalHours() { return this.hm(this.records.reduce((s, r) => s + (r.check_out ? this.minutesOf(r) : 0), 0)); },
     viewEmployeeName() { const e = this.employees.find(e => e.id === this.viewEmployee); return e ? e.name : ''; },
   },
   async mounted() {
@@ -351,10 +411,24 @@ Vue.createApp({
   methods: {
     blankLeave() { return { leave_type_id: null, start_date: today0(), end_date: today0(), half_day: false, reason: '' }; },
     blankEmp() { return { name: '', email: '', password: '', role: 'employee', approver_id: null, join_date: today0() }; },
-    time(iso) { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); },
+    minutesOf(r) { return Math.max(0, Math.round((new Date(r.check_out) - new Date(r.check_in)) / 60000)); },
+    hm(mins) { return Math.floor(mins / 60) + 'h ' + String(mins % 60).padStart(2, '0') + 'm'; },
+    time(iso) { return new Date(iso).toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }); },
+    dateOnly(iso) { return new Date(iso).toLocaleDateString('en-GB', { day: 'numeric', month: 'short', year: 'numeric' }); },
     dateTime(iso) { return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); },
     flash(msg, err = false) { this.toast = { msg, err }; clearTimeout(this._t); if (!err) this._t = setTimeout(() => this.toast.msg = '', 2500); },
-    async run(fn) { try { await fn(); } catch (e) { this.flash(e.message, true); } },
+    /** Centered popup that asks for values (or just confirms). Resolves to {key: value} or null if cancelled. */
+    ask(title, fields = [], message = '') {
+      return new Promise(resolve => { this.dialog = { title, message, fields: fields.map(f => ({ value: '', ...f })), resolve }; });
+    },
+    closeDialog(ok) {
+      const d = this.dialog; this.dialog = null;
+      d.resolve(ok ? Object.fromEntries(d.fields.map(f => [f.key, f.value])) : null);
+    },
+    async run(fn) {
+      this.busy++;
+      try { await fn(); } catch (e) { this.flash(e.message, true); } finally { this.busy--; }
+    },
 
     async api(path, method = 'GET', body) {
       const isForm = body instanceof FormData;
@@ -400,9 +474,12 @@ Vue.createApp({
       });
     },
     async changePassword() {
-      const old_password = prompt('Current password:'); if (!old_password) return;
-      const new_password = prompt('New password (min 8 characters):'); if (!new_password) return;
-      await this.run(async () => { await this.api('/me/password', 'POST', { old_password, new_password }); this.flash('Password changed'); });
+      const v = await this.ask('Change password', [
+        { key: 'old_password', label: 'Current password', type: 'password' },
+        { key: 'new_password', label: 'New password (min 8 characters)', type: 'password' },
+      ]);
+      if (!v) return;
+      await this.run(async () => { await this.api('/me/password', 'POST', v); this.flash('Password changed'); });
     },
 
     // ---- attendance ----
@@ -429,12 +506,12 @@ Vue.createApp({
       this.flash('Leave requested'); await this.go('leave');
     },
     canCancel(r) { return r.status === 'pending' || (r.status === 'approved' && r.start_date > today0()); },
-    async cancelLeave(r) { if (!confirm('Cancel this leave request?')) return; await this.api(`/leave/${r.id}/cancel`, 'POST'); await this.go('leave'); },
+    async cancelLeave(r) { if (!await this.ask('Cancel leave', [], 'Cancel this leave request?')) return; await this.api(`/leave/${r.id}/cancel`, 'POST'); await this.go('leave'); },
     async loadApprovals() { this.approvals = await this.api('/leave/approvals?status=' + this.approvalStatus); },
     async decide(r, approve) {
-      const note = prompt(approve ? 'Note (optional):' : 'Reason for rejecting (optional):', '');
-      if (note === null) return;
-      await this.api(`/leave/${r.id}/decision`, 'POST', { approve, note });
+      const v = await this.ask(approve ? 'Approve leave' : 'Reject leave', [{ key: 'note', label: approve ? 'Note (optional)' : 'Reason (optional)' }], `${r.employee}: ${r.start_date}${r.end_date !== r.start_date ? ' → ' + r.end_date : ''}`);
+      if (!v) return;
+      await this.api(`/leave/${r.id}/decision`, 'POST', { approve, note: v.note });
       this.flash(approve ? 'Approved' : 'Rejected'); await this.loadApprovals();
     },
 
@@ -473,8 +550,9 @@ Vue.createApp({
     },
     async patchEmp(e, patch) { await this.api('/employees/' + e.id, 'PATCH', patch); this.flash('Saved'); await this.go('employees'); },
     async resetPassword(e) {
-      const password = prompt('New password for ' + e.name + ' (min 8 characters):'); if (!password) return;
-      await this.api('/employees/' + e.id, 'PATCH', { password }); this.flash('Password reset');
+      const v = await this.ask('Reset password', [{ key: 'password', label: 'New password for ' + e.name + ' (min 8 characters)' }]);
+      if (!v || !v.password) return;
+      await this.api('/employees/' + e.id, 'PATCH', { password: v.password }); this.flash('Password reset');
     },
     async setLeaveDays(t, v) { await this.api('/leave-types/' + t.id, 'PATCH', { days_per_year: +v }); this.flash('Saved'); },
   },
