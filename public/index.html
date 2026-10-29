@@ -1,0 +1,465 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Own HRMS</title>
+<style>
+  :root { --bg:#f5f6f8; --card:#fff; --ink:#1f2933; --muted:#6b7785; --line:#e3e7ec; --brand:#2f5bea; --ok:#1b8a4b; --bad:#c62828; --warn:#b26a00; }
+  * { box-sizing: border-box; }
+  body { margin:0; font:15px/1.45 system-ui, -apple-system, Segoe UI, Roboto, sans-serif; background:var(--bg); color:var(--ink); }
+  [v-cloak] { display:none; }
+  header { background:var(--card); border-bottom:1px solid var(--line); padding:10px 20px; display:flex; align-items:center; gap:16px; flex-wrap:wrap; }
+  header h1 { font-size:18px; margin:0; margin-right:auto; }
+  nav { display:flex; gap:4px; flex-wrap:wrap; padding:10px 20px 0; max-width:1000px; margin:0 auto; }
+  nav button { background:none; border:0; padding:8px 14px; border-radius:6px 6px 0 0; cursor:pointer; color:var(--muted); font:inherit; border-bottom:2px solid transparent; }
+  nav button.on { color:var(--brand); border-bottom-color:var(--brand); font-weight:600; }
+  main { max-width:1000px; margin:0 auto; padding:16px 20px 60px; }
+  .card { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px; margin-bottom:16px; }
+  .card h2 { margin:0 0 12px; font-size:16px; }
+  .row { display:flex; gap:10px; flex-wrap:wrap; align-items:end; }
+  label { display:flex; flex-direction:column; font-size:12px; color:var(--muted); gap:4px; }
+  input, select, textarea { font:inherit; padding:7px 9px; border:1px solid var(--line); border-radius:6px; background:#fff; color:var(--ink); }
+  button.btn { font:inherit; padding:7px 14px; border-radius:6px; border:1px solid var(--brand); background:var(--brand); color:#fff; cursor:pointer; }
+  button.btn.ghost { background:#fff; color:var(--brand); }
+  button.btn.bad { background:var(--bad); border-color:var(--bad); }
+  button.btn.ok { background:var(--ok); border-color:var(--ok); }
+  button.btn.sm { padding:3px 9px; font-size:13px; }
+  button.btn:disabled { opacity:.5; cursor:default; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:8px 6px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { font-size:12px; color:var(--muted); font-weight:600; }
+  .scroll { overflow-x:auto; }
+  .pill { display:inline-block; padding:1px 9px; border-radius:99px; font-size:12px; background:#eef1f5; }
+  .pill.approved, .pill.done { background:#e3f5ea; color:var(--ok); }
+  .pill.rejected, .pill.cancelled { background:#fdeaea; color:var(--bad); }
+  .pill.pending { background:#fff3dc; color:var(--warn); }
+  .stats { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px, 1fr)); gap:10px; }
+  .stat { border:1px solid var(--line); border-radius:8px; padding:10px 12px; }
+  .stat b { font-size:22px; display:block; }
+  .muted { color:var(--muted); font-size:13px; }
+  .toast { position:fixed; bottom:18px; left:50%; transform:translateX(-50%); padding:10px 18px; border-radius:8px; color:#fff; background:var(--ok); z-index:9; max-width:90vw; }
+  .toast.err { background:var(--bad); }
+  .login { max-width:340px; margin:12vh auto; }
+  .login label { margin-bottom:10px; }
+  .big { font-size:17px; padding:12px 26px; }
+</style>
+</head>
+<body>
+<div id="app" v-cloak>
+
+  <!-- ===== Login ===== -->
+  <div v-if="!me" class="login card">
+    <h2>Own HRMS - Sign in</h2>
+    <form @submit.prevent="login">
+      <label>Email <input v-model="loginForm.email" type="email" required autofocus></label>
+      <label>Password <input v-model="loginForm.password" type="password" required></label>
+      <button class="btn" style="width:100%">Log in</button>
+    </form>
+  </div>
+
+  <template v-else>
+    <header>
+      <h1>Own HRMS</h1>
+      <span class="muted">{{ me.name }} &middot; {{ me.role }}</span>
+      <button class="btn ghost sm" @click="changePassword">Change password</button>
+      <button class="btn sm" @click="logout">Log out</button>
+    </header>
+    <nav>
+      <button v-for="t in tabs" :key="t.id" :class="{on: tab===t.id}" @click="go(t.id)">{{ t.label }}</button>
+    </nav>
+
+    <main>
+      <!-- ===== Attendance ===== -->
+      <section v-if="tab==='attendance'">
+        <div class="card">
+          <h2>Today</h2>
+          <p v-if="today.checked_in">Checked in since <b>{{ time(today.since) }}</b></p>
+          <p v-else class="muted">You are not checked in.</p>
+          <button v-if="!today.checked_in" class="btn ok big" @click="run(checkIn)">Check in</button>
+          <button v-else class="btn bad big" @click="run(checkOut)">Check out</button>
+        </div>
+
+        <div class="card">
+          <div class="row" style="margin-bottom:10px">
+            <h2 style="margin:0 auto 0 0">{{ attScope==='team' ? 'Team records' : 'My records' }}</h2>
+            <label>Month <input type="month" v-model="month" @change="loadAttendance"></label>
+            <template v-if="canManage">
+              <label>Show
+                <select v-model="attScope" @change="loadAttendance">
+                  <option value="mine">Only me</option>
+                  <option value="team">{{ me.role==='hr' ? 'Everyone' : 'My team' }}</option>
+                </select>
+              </label>
+              <label v-if="attScope==='team'">Employee
+                <select v-model="attEmployee" @change="loadAttendance">
+                  <option value="">All</option>
+                  <option v-for="e in employees" :value="e.id">{{ e.name }}</option>
+                </select>
+              </label>
+            </template>
+          </div>
+          <div class="scroll"><table>
+            <tr><th v-if="attScope==='team'">Employee</th><th>Check in</th><th>Check out</th><th>Hours</th><th v-if="me.role==='hr' && attScope==='team'"></th></tr>
+            <tr v-for="r in records" :key="r.id">
+              <template v-if="editing && editing.id===r.id">
+                <td v-if="attScope==='team'">{{ r.employee }}</td>
+                <td><input type="datetime-local" v-model="editing.check_in"></td>
+                <td><input type="datetime-local" v-model="editing.check_out"></td>
+                <td></td>
+                <td><button class="btn sm ok" @click="run(saveEdit)">Save</button> <button class="btn sm ghost" @click="editing=null">Cancel</button></td>
+              </template>
+              <template v-else>
+                <td v-if="attScope==='team'">{{ r.employee }}</td>
+                <td>{{ dateTime(r.check_in) }}</td>
+                <td>{{ r.check_out ? dateTime(r.check_out) : 'still in' }}</td>
+                <td>{{ r.hours ?? '-' }}</td>
+                <td v-if="me.role==='hr' && attScope==='team'"><button class="btn sm ghost" @click="startEdit(r)">Correct</button></td>
+              </template>
+            </tr>
+            <tr v-if="!records.length"><td colspan="5" class="muted">No records for this month.</td></tr>
+          </table></div>
+          <p class="muted" v-if="records.length">Total hours: {{ totalHours }}</p>
+        </div>
+      </section>
+
+      <!-- ===== Leave ===== -->
+      <section v-if="tab==='leave'">
+        <div class="card">
+          <h2>My leave balance ({{ new Date().getFullYear() }})</h2>
+          <div class="stats">
+            <div class="stat" v-for="b in balance" :key="b.leave_type_id">
+              <span class="muted">{{ b.leave_type }}</span>
+              <b>{{ b.remaining }}</b>
+              <span class="muted">of {{ b.allocated }} left &middot; {{ b.pending }} pending</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="card">
+          <h2>Request leave</h2>
+          <form class="row" @submit.prevent="run(requestLeave)">
+            <label>Type
+              <select v-model="leaveForm.leave_type_id" required>
+                <option v-for="t in leaveTypes" :value="t.id">{{ t.name }}</option>
+              </select>
+            </label>
+            <label>From <input type="date" v-model="leaveForm.start_date" required @change="syncEnd"></label>
+            <label>To <input type="date" v-model="leaveForm.end_date" required :min="leaveForm.start_date"></label>
+            <label style="flex-direction:row; align-items:center; gap:6px"><input type="checkbox" v-model="leaveForm.half_day"> Half day</label>
+            <label style="flex:1; min-width:180px">Reason <input v-model="leaveForm.reason" maxlength="500"></label>
+            <button class="btn">Submit</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>My requests</h2>
+          <div class="scroll"><table>
+            <tr><th>Type</th><th>Dates</th><th>Days</th><th>Status</th><th>Note</th><th></th></tr>
+            <tr v-for="r in myLeave" :key="r.id">
+              <td>{{ r.leave_type }}</td>
+              <td>{{ r.start_date }}<span v-if="r.end_date!==r.start_date"> → {{ r.end_date }}</span></td>
+              <td>{{ r.days }}</td>
+              <td><span class="pill" :class="r.status">{{ r.status }}</span></td>
+              <td class="muted">{{ r.decision_note }} <span v-if="r.decided_by">({{ r.decided_by }})</span></td>
+              <td><button v-if="canCancel(r)" class="btn sm ghost" @click="run(() => cancelLeave(r))">Cancel</button></td>
+            </tr>
+            <tr v-if="!myLeave.length"><td colspan="6" class="muted">No leave requests yet.</td></tr>
+          </table></div>
+        </div>
+      </section>
+
+      <!-- ===== Approvals ===== -->
+      <section v-if="tab==='approvals'">
+        <div class="card">
+          <div class="row" style="margin-bottom:10px">
+            <h2 style="margin:0 auto 0 0">Leave approvals</h2>
+            <label>Show
+              <select v-model="approvalStatus" @change="loadApprovals">
+                <option value="pending">Pending</option><option value="approved">Approved</option>
+                <option value="rejected">Rejected</option><option value="all">All</option>
+              </select>
+            </label>
+          </div>
+          <div class="scroll"><table>
+            <tr><th>Employee</th><th>Type</th><th>Dates</th><th>Days</th><th>Reason</th><th>Status</th><th></th></tr>
+            <tr v-for="r in approvals" :key="r.id">
+              <td>{{ r.employee }}</td><td>{{ r.leave_type }}</td>
+              <td>{{ r.start_date }}<span v-if="r.end_date!==r.start_date"> → {{ r.end_date }}</span></td>
+              <td>{{ r.days }}</td><td class="muted">{{ r.reason }}</td>
+              <td><span class="pill" :class="r.status">{{ r.status }}</span></td>
+              <td v-if="r.status==='pending'" style="white-space:nowrap">
+                <button class="btn sm ok" @click="run(() => decide(r, true))">Approve</button>
+                <button class="btn sm bad" @click="run(() => decide(r, false))">Reject</button>
+              </td>
+              <td v-else class="muted">{{ r.decision_note }}</td>
+            </tr>
+            <tr v-if="!approvals.length"><td colspan="7" class="muted">Nothing here.</td></tr>
+          </table></div>
+        </div>
+      </section>
+
+      <!-- ===== Onboarding ===== -->
+      <section v-if="tab==='onboarding'">
+        <div class="card">
+          <div class="row" style="margin-bottom:10px">
+            <h2 style="margin:0 auto 0 0">{{ viewEmployee ? 'Checklist: ' + viewEmployeeName : 'My onboarding checklist' }}</h2>
+            <label v-if="canManage">View checklist of
+              <select v-model="viewEmployee" @change="loadOnboarding">
+                <option :value="null">Me</option>
+                <option v-for="e in employees" :value="e.id">{{ e.name }}</option>
+              </select>
+            </label>
+          </div>
+          <p class="muted" v-if="!items.length">No onboarding tasks.</p>
+          <p v-else class="muted">{{ items.filter(i => i.status==='done').length }} of {{ items.length }} done</p>
+          <div class="scroll"><table v-if="items.length">
+            <tr><th>Task</th><th>Status</th><th>Document</th><th></th></tr>
+            <tr v-for="i in items" :key="i.id">
+              <td>{{ i.title }}</td>
+              <td><span class="pill" :class="i.status">{{ i.status }}</span></td>
+              <td>
+                <a v-if="i.doc_name" href="#" @click.prevent="run(() => openFile(i))">{{ i.doc_name }}</a>
+                <span v-else-if="i.requires_upload" class="muted">upload required</span>
+              </td>
+              <td style="white-space:nowrap">
+                <label v-if="i.requires_upload && (i.status!=='done' || me.role==='hr')" class="btn sm ghost" style="display:inline-block; cursor:pointer; color:var(--brand)">
+                  {{ i.doc_name ? 'Replace' : 'Upload' }}
+                  <input type="file" hidden accept=".pdf,.png,.jpg,.jpeg" @change="e => run(() => upload(i, e))">
+                </label>
+                <button v-if="!i.requires_upload && i.status!=='done'" class="btn sm" @click="run(() => completeItem(i))">Mark done</button>
+                <button v-if="me.role==='hr' && i.status==='done'" class="btn sm ghost" @click="run(() => reopenItem(i))">Reopen</button>
+              </td>
+            </tr>
+          </table></div>
+        </div>
+
+        <div class="card" v-if="me.role==='hr'">
+          <h2>Onboarding template <span class="muted">(copied to every new employee)</span></h2>
+          <ul style="padding-left:18px; margin:0 0 10px">
+            <li v-for="t in template" :key="t.id">{{ t.title }} <span class="muted" v-if="t.requires_upload">(upload)</span>
+              <a href="#" style="color:var(--bad)" @click.prevent="run(() => removeTemplate(t))">remove</a></li>
+          </ul>
+          <form class="row" @submit.prevent="run(addTemplate)">
+            <label style="flex:1; min-width:200px">New task <input v-model="newTask.title" required></label>
+            <label style="flex-direction:row; align-items:center; gap:6px"><input type="checkbox" v-model="newTask.requires_upload"> Needs document</label>
+            <button class="btn">Add to template</button>
+            <button type="button" class="btn ghost" v-if="viewEmployee" @click="run(addTaskToEmployee)">Add only to {{ viewEmployeeName }}</button>
+          </form>
+        </div>
+      </section>
+
+      <!-- ===== Employees (HR) ===== -->
+      <section v-if="tab==='employees'">
+        <div class="card">
+          <h2>Add employee</h2>
+          <form class="row" @submit.prevent="run(addEmployee)">
+            <label>Name <input v-model="newEmp.name" required></label>
+            <label>Email <input type="email" v-model="newEmp.email" required></label>
+            <label>Temp password <input v-model="newEmp.password" minlength="8" required></label>
+            <label>Role
+              <select v-model="newEmp.role"><option>employee</option><option>manager</option><option>hr</option></select>
+            </label>
+            <label>Leave approver
+              <select v-model="newEmp.approver_id"><option :value="null">- none (HR decides) -</option><option v-for="a in approvers" :value="a.id">{{ a.name }}</option></select>
+            </label>
+            <label>Join date <input type="date" v-model="newEmp.join_date"></label>
+            <button class="btn">Add</button>
+          </form>
+        </div>
+
+        <div class="card">
+          <h2>Employees</h2>
+          <div class="scroll"><table>
+            <tr><th>Name</th><th>Email</th><th>Role</th><th>Approver</th><th>Active</th><th></th></tr>
+            <tr v-for="e in employees" :key="e.id">
+              <td>{{ e.name }}</td><td class="muted">{{ e.email }}</td>
+              <td><select :value="e.role" @change="ev => run(() => patchEmp(e, {role: ev.target.value}))"><option>employee</option><option>manager</option><option>hr</option></select></td>
+              <td><select :value="e.approver_id" @change="ev => run(() => patchEmp(e, ev.target.value==='' ? {clear_approver:true} : {approver_id:+ev.target.value}))">
+                <option value="">- none -</option><option v-for="a in approvers" :value="a.id" :disabled="a.id===e.id">{{ a.name }}</option></select></td>
+              <td><input type="checkbox" :checked="e.is_active" @change="ev => run(() => patchEmp(e, {is_active: ev.target.checked}))"></td>
+              <td><a href="#" @click.prevent="run(() => resetPassword(e))">reset password</a></td>
+            </tr>
+          </table></div>
+        </div>
+
+        <div class="card">
+          <h2>Leave days per year</h2>
+          <div class="row">
+            <label v-for="t in leaveTypes" :key="t.id">{{ t.name }}
+              <input type="number" min="0" step="0.5" :value="t.days_per_year" style="width:90px" @change="ev => run(() => setLeaveDays(t, ev.target.value))">
+            </label>
+          </div>
+        </div>
+      </section>
+    </main>
+  </template>
+
+  <div v-if="toast.msg" class="toast" :class="{err: toast.err}">{{ toast.msg }}</div>
+</div>
+
+<script src="https://unpkg.com/vue@3/dist/vue.global.prod.js"></script>
+<script>
+const today0 = () => { const d = new Date(); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10); };
+const toLocalInput = iso => { if (!iso) return ''; const d = new Date(iso); return new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 16); };
+
+Vue.createApp({
+  data() {
+    return {
+      token: localStorage.getItem('hrms_token'), me: null, tab: 'attendance', toast: { msg: '', err: false },
+      loginForm: { email: '', password: '' },
+      today: { checked_in: false, since: null }, month: today0().slice(0, 7), records: [], attScope: 'mine', attEmployee: '', editing: null,
+      employees: [], approvers: [], leaveTypes: [], balance: [], myLeave: [], leaveForm: this.blankLeave(),
+      approvals: [], approvalStatus: 'pending',
+      items: [], viewEmployee: null, template: [], newTask: { title: '', requires_upload: false },
+      newEmp: this.blankEmp(),
+    };
+  },
+  computed: {
+    canManage() { return this.me && (this.me.role === 'hr' || this.me.role === 'manager'); },
+    tabs() {
+      const t = [{ id: 'attendance', label: 'Attendance' }, { id: 'leave', label: 'Leave' }, { id: 'onboarding', label: 'Onboarding' }];
+      if (this.canManage) t.splice(2, 0, { id: 'approvals', label: 'Approvals' });
+      if (this.me && this.me.role === 'hr') t.push({ id: 'employees', label: 'Employees' });
+      return t;
+    },
+    totalHours() { return this.records.reduce((s, r) => s + (r.hours || 0), 0).toFixed(2); },
+    viewEmployeeName() { const e = this.employees.find(e => e.id === this.viewEmployee); return e ? e.name : ''; },
+  },
+  async mounted() {
+    if (this.token) { try { this.me = await this.api('/me'); await this.afterLogin(); } catch { this.logout(); } }
+  },
+  methods: {
+    blankLeave() { return { leave_type_id: null, start_date: today0(), end_date: today0(), half_day: false, reason: '' }; },
+    blankEmp() { return { name: '', email: '', password: '', role: 'employee', approver_id: null, join_date: today0() }; },
+    time(iso) { return new Date(iso).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }); },
+    dateTime(iso) { return new Date(iso).toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' }); },
+    flash(msg, err = false) { this.toast = { msg, err }; clearTimeout(this._t); this._t = setTimeout(() => this.toast.msg = '', 3500); },
+    async run(fn) { try { await fn(); } catch (e) { this.flash(e.message, true); } },
+
+    async api(path, method = 'GET', body) {
+      const isForm = body instanceof FormData;
+      const headers = {};
+      if (this.token) headers.Authorization = 'Bearer ' + this.token;
+      if (body && !isForm) headers['Content-Type'] = 'application/json';
+      const r = await fetch('/api' + path, { method, headers, body: body ? (isForm ? body : JSON.stringify(body)) : undefined });
+      if (r.status === 401 && this.token) { this.logout(); throw new Error('Please log in again'); }
+      if (!r.ok) {
+        let m = r.statusText;
+        try { const j = await r.json(); m = typeof j.detail === 'string' ? j.detail : JSON.stringify(j.detail); } catch {}
+        throw new Error(m);
+      }
+      return (r.headers.get('content-type') || '').includes('json') ? r.json() : r;
+    },
+
+    // ---- session ----
+    async login() {
+      await this.run(async () => {
+        const r = await this.api('/auth/login', 'POST', this.loginForm);
+        this.token = r.token; this.me = r.user; localStorage.setItem('hrms_token', r.token);
+        this.loginForm.password = '';
+        await this.afterLogin();
+      });
+    },
+    logout() { this.token = null; this.me = null; localStorage.removeItem('hrms_token'); },
+    async afterLogin() {
+      this.tab = 'attendance';
+      this.leaveTypes = await this.api('/leave-types');
+      this.leaveForm.leave_type_id = this.leaveTypes[0] && this.leaveTypes[0].id;
+      if (this.canManage) this.employees = await this.api('/employees');
+      if (this.me.role === 'hr') this.approvers = await this.api('/approvers');
+      await this.go('attendance');
+    },
+    async go(tab) {
+      this.tab = tab;
+      await this.run(async () => {
+        if (tab === 'attendance') { this.today = await this.api('/attendance/today'); await this.loadAttendance(); }
+        if (tab === 'leave') { this.balance = await this.api('/leave/balance'); this.myLeave = await this.api('/leave/mine'); }
+        if (tab === 'approvals') await this.loadApprovals();
+        if (tab === 'onboarding') { await this.loadOnboarding(); if (this.me.role === 'hr') this.template = await this.api('/onboarding/template'); }
+        if (tab === 'employees') { this.employees = await this.api('/employees'); this.approvers = await this.api('/approvers'); this.leaveTypes = await this.api('/leave-types'); }
+      });
+    },
+    async changePassword() {
+      const old_password = prompt('Current password:'); if (!old_password) return;
+      const new_password = prompt('New password (min 8 characters):'); if (!new_password) return;
+      await this.run(async () => { await this.api('/me/password', 'POST', { old_password, new_password }); this.flash('Password changed'); });
+    },
+
+    // ---- attendance ----
+    async checkIn() { await this.api('/attendance/in', 'POST'); this.flash('Checked in'); await this.go('attendance'); },
+    async checkOut() { await this.api('/attendance/out', 'POST'); this.flash('Checked out'); await this.go('attendance'); },
+    async loadAttendance() {
+      if (this.attScope === 'team') {
+        const q = '?month=' + this.month + (this.attEmployee ? '&employee_id=' + this.attEmployee : '');
+        this.records = await this.api('/attendance/team' + q);
+      } else this.records = await this.api('/attendance/mine?month=' + this.month);
+    },
+    startEdit(r) { this.editing = { id: r.id, check_in: toLocalInput(r.check_in), check_out: toLocalInput(r.check_out) }; },
+    async saveEdit() {
+      const e = this.editing;
+      await this.api('/attendance/' + e.id, 'PATCH', { check_in: new Date(e.check_in).toISOString(), check_out: e.check_out ? new Date(e.check_out).toISOString() : null });
+      this.editing = null; this.flash('Record corrected'); await this.loadAttendance();
+    },
+
+    // ---- leave ----
+    syncEnd() { if (this.leaveForm.end_date < this.leaveForm.start_date) this.leaveForm.end_date = this.leaveForm.start_date; },
+    async requestLeave() {
+      await this.api('/leave', 'POST', this.leaveForm);
+      this.leaveForm = { ...this.blankLeave(), leave_type_id: this.leaveForm.leave_type_id };
+      this.flash('Leave requested'); await this.go('leave');
+    },
+    canCancel(r) { return r.status === 'pending' || (r.status === 'approved' && r.start_date > today0()); },
+    async cancelLeave(r) { if (!confirm('Cancel this leave request?')) return; await this.api(`/leave/${r.id}/cancel`, 'POST'); await this.go('leave'); },
+    async loadApprovals() { this.approvals = await this.api('/leave/approvals?status=' + this.approvalStatus); },
+    async decide(r, approve) {
+      const note = prompt(approve ? 'Note (optional):' : 'Reason for rejecting (optional):', '');
+      if (note === null) return;
+      await this.api(`/leave/${r.id}/decision`, 'POST', { approve, note });
+      this.flash(approve ? 'Approved' : 'Rejected'); await this.loadApprovals();
+    },
+
+    // ---- onboarding ----
+    async loadOnboarding() {
+      this.items = await this.api(this.viewEmployee ? '/onboarding/employee/' + this.viewEmployee : '/onboarding/mine');
+    },
+    async completeItem(i) { await this.api(`/onboarding/items/${i.id}/complete`, 'POST'); await this.loadOnboarding(); },
+    async reopenItem(i) { await this.api(`/onboarding/items/${i.id}/reopen`, 'POST'); await this.loadOnboarding(); },
+    async upload(i, ev) {
+      const file = ev.target.files[0]; ev.target.value = ''; if (!file) return;
+      if (file.size > 4 * 1024 * 1024) throw new Error('File is larger than 4 MB');
+      const fd = new FormData(); fd.append('file', file);
+      await this.api(`/onboarding/items/${i.id}/upload`, 'POST', fd);
+      this.flash('Uploaded'); await this.loadOnboarding();
+    },
+    async openFile(i) {
+      const r = await this.api(`/onboarding/items/${i.id}/file`);
+      window.open(URL.createObjectURL(await r.blob()), '_blank');
+    },
+    async addTemplate() {
+      await this.api('/onboarding/template', 'POST', this.newTask);
+      this.newTask = { title: '', requires_upload: false }; this.template = await this.api('/onboarding/template');
+    },
+    async removeTemplate(t) { await this.api('/onboarding/template/' + t.id, 'DELETE'); this.template = await this.api('/onboarding/template'); },
+    async addTaskToEmployee() {
+      if (!this.newTask.title) throw new Error('Type the task first');
+      await this.api(`/onboarding/employee/${this.viewEmployee}/task`, 'POST', this.newTask);
+      this.newTask = { title: '', requires_upload: false }; await this.loadOnboarding();
+    },
+
+    // ---- employees ----
+    async addEmployee() {
+      await this.api('/employees', 'POST', this.newEmp);
+      this.newEmp = this.blankEmp(); this.flash('Employee added'); await this.go('employees');
+    },
+    async patchEmp(e, patch) { await this.api('/employees/' + e.id, 'PATCH', patch); this.flash('Saved'); await this.go('employees'); },
+    async resetPassword(e) {
+      const password = prompt('New password for ' + e.name + ' (min 8 characters):'); if (!password) return;
+      await this.api('/employees/' + e.id, 'PATCH', { password }); this.flash('Password reset');
+    },
+    async setLeaveDays(t, v) { await this.api('/leave-types/' + t.id, 'PATCH', { days_per_year: +v }); this.flash('Saved'); },
+  },
+}).mount('#app');
+</script>
+</body>
+</html>
