@@ -72,8 +72,50 @@
   .popup .icon { font-size:34px; line-height:1; color:var(--ok); }
   .popup.err .icon { color:var(--bad); }
   .popup p { margin:10px 0 16px; font-size:16px; }
-  .login { max-width:340px; margin:12vh auto; }
-  .login label { margin-bottom:10px; }
+  .split { display:flex; flex-direction:column; height:100vh; }
+  .split-top { flex:0 0 12%; background:var(--card); border-bottom:1px solid var(--line); display:flex; align-items:center; justify-content:center; gap:24px; flex-wrap:wrap; padding:12px 24px; }
+  .split-top { position:relative; }
+  .split-top h2.brand { position:absolute; left:24px; top:50%; transform:translateY(-50%); margin:0; font-size:20px; }
+  .split-top .choose { display:flex; flex-direction:column; align-items:center; gap:4px; }
+  .split-top .muted { margin:0; }
+  .split-top .roles { display:flex; gap:12px; flex-wrap:wrap; }
+  .split-bottom { flex:1 1 88%; display:flex; align-items:center; justify-content:flex-end; padding:24px 16vw 24px 6vw; background:
+      linear-gradient(to bottom, #63c7f2, #5dd4f9 25%, #4dbff3 50%, #63ddfb 75%, #b0e4fd) left top / 6vw 100% no-repeat,
+      url('login-art.png') 5vw bottom / auto 100% no-repeat,
+      #f2f6fe; }
+  .split-inner { width:100%; max-width:460px; padding:40px 36px; border-radius:20px; border:1px solid rgba(255,255,255,.7);
+    background:linear-gradient(135deg, rgba(255,255,255,.6) 0%, rgba(255,255,255,.25) 45%, rgba(255,255,255,.4) 100%);
+    -webkit-backdrop-filter:blur(14px) saturate(160%); backdrop-filter:blur(14px) saturate(160%);
+    box-shadow:0 12px 40px rgba(31,70,140,.25), inset 0 1px 0 rgba(255,255,255,.9), inset 0 -1px 0 rgba(255,255,255,.3); }
+  .slide-in-enter-active { transition:transform .5s cubic-bezier(.2,.8,.2,1), opacity .5s ease; }
+  .slide-in-enter-from { transform:translateX(60vw); opacity:0; }
+  .split-bottom { overflow:hidden; position:relative; }
+  .pick-role { position:absolute; right:16vw; top:50%; transform:translateY(-50%); width:460px; max-width:calc(100% - 22vw); text-align:center; margin:0; }
+  .pick-role p { margin:0; }
+  .contact { position:fixed; right:20px; bottom:20px; display:flex; flex-direction:column; align-items:flex-end; gap:10px; z-index:20; }
+  .contact-btn { display:flex; align-items:center; gap:8px; font:inherit; font-weight:600; color:var(--ink); padding:8px 16px 8px 10px; border-radius:999px; border:1px solid rgba(255,255,255,.8); background:rgba(255,255,255,.75); -webkit-backdrop-filter:blur(10px); backdrop-filter:blur(10px); box-shadow:0 6px 20px rgba(31,70,140,.25); cursor:pointer; }
+  .contact-btn:hover { background:#fff; }
+  .contact-btn svg { background:#fff; border-radius:50%; padding:4px; box-sizing:content-box; box-shadow:0 0 0 1px var(--line); }
+  .contact-pop { display:flex; flex-direction:column; gap:2px; padding:12px 16px; border-radius:12px; background:#fff; border:1px solid var(--line); box-shadow:0 8px 24px rgba(31,70,140,.25); font-size:14px; }
+  .contact-pop a { color:var(--brand); font-weight:600; }
+  .fade-enter-active { transition:opacity .2s ease; }
+  .fade-enter-from { opacity:0; }
+  .fade-leave-active { transition:opacity .2s ease; }
+  .fade-leave-to { opacity:0; }
+  .role-clip { display:inline-block; overflow:hidden; vertical-align:bottom; line-height:1.3; }
+  .role-name { display:inline-block; }
+  .push-enter-active, .push-leave-active { transition:transform .22s ease, opacity .22s ease; }
+  .push-enter-from { transform:translateY(100%); opacity:0; }
+  .push-leave-to { transform:translateY(-100%); opacity:0; }
+  .split-inner h2 { margin:0 0 20px; font-size:26px; }
+  .split-inner label { margin-bottom:16px; font-size:14px; }
+  .split-inner input { padding:12px 14px; font-size:16px; background:rgba(255,255,255,.65); border-color:rgba(255,255,255,.8); }
+  .split-inner button.btn { padding:13px 14px; font-size:17px; border-radius:10px; }
+  label.radio { flex-direction:row; align-items:center; gap:10px; padding:10px 16px; border:0; border-radius:8px; font-size:15px; color:var(--ink); cursor:pointer; margin:0; }
+  label.radio.on { background:#eef3ff; }
+  label.radio input { margin:0; accent-color:var(--brand); }
+  @media (max-width:700px) { .pick-role { position:static; transform:none; width:100%; max-width:460px; } }
+  @media (max-width:700px) { .split { height:auto; min-height:100vh; } .split-top { flex-basis:auto; flex-direction:column; } .split-top h2.brand { position:static; transform:none; } .split-bottom { justify-content:center; padding:24px; background:#f2f6fe url('login-art.png') left top / cover no-repeat; } }
   .big { font-size:17px; padding:12px 26px; }
 </style>
 </head>
@@ -97,20 +139,49 @@
   </div>
 
   <!-- ===== Login ===== -->
-  <div v-if="!me && !portal" class="login card">
-    <h2>Own HRMS</h2>
-    <p class="muted">Who are you signing in as?</p>
-    <button v-for="p in portals" :key="p.id" class="btn ghost big" style="width:100%; margin-bottom:10px" @click="portal = p.id">{{ p.label }}</button>
-  </div>
+  <div v-if="!me" class="split" @click="showContact = false">
+    <div class="split-top">
+      <h2 class="brand">Own HRMS</h2>
+      <div class="choose">
+        <p class="muted">Who are you signing in as?</p>
+        <div class="roles">
+          <label v-for="p in portals" :key="p.id" class="radio" :class="{on: portal === p.id}">
+            <input type="radio" name="portal" :value="p.id" v-model="portal"> {{ p.label }}
+          </label>
+        </div>
+      </div>
+    </div>
+    <div class="split-bottom">
+      <transition name="fade"><div v-if="!portal" class="split-inner card pick-role"><h2>Select a role</h2><p class="muted">Choose Employee, Manager or HR above to sign in.</p></div></transition>
+      <transition name="slide-in">
+        <div v-if="portal" class="split-inner card">
+          <h2><span class="role-clip"><transition name="push" mode="out-in"><span :key="portal" class="role-name">{{ portalLabel }}</span></transition></span> sign in</h2>
+          <form @submit.prevent="login">
+            <label>Email <input v-model="loginForm.email" type="email" required autofocus></label>
+            <label>Password <input v-model="loginForm.password" type="password" required></label>
+            <button class="btn" style="width:100%">Log in</button>
+          </form>
+        </div>
+      </transition>
+    </div>
 
-  <div v-else-if="!me" class="login card">
-    <h2>{{ portalLabel }} sign in</h2>
-    <form @submit.prevent="login">
-      <label>Email <input v-model="loginForm.email" type="email" required autofocus></label>
-      <label>Password <input v-model="loginForm.password" type="password" required></label>
-      <button class="btn" style="width:100%">Log in</button>
-    </form>
-    <p style="text-align:center"><a href="#" @click.prevent="portal = null">&larr; Choose a different role</a></p>
+    <div class="contact" @click.stop>
+      <transition name="fade">
+        <div v-if="showContact" class="contact-pop">
+          <span class="muted">Email us at</span>
+          <a href="mailto:pavankumarreddy.basayyagari@bgthub.com">pavankumarreddy.basayyagari@bgthub.com</a>
+        </div>
+      </transition>
+      <button type="button" class="contact-btn" @click="showContact = !showContact" aria-label="Contact us">
+        <svg viewBox="0 0 24 24" width="22" height="22" aria-hidden="true">
+          <path fill="#fff" d="M2 6.5A2.5 2.5 0 0 1 4.5 4h15A2.5 2.5 0 0 1 22 6.5v11a2.5 2.5 0 0 1-2.5 2.5h-15A2.5 2.5 0 0 1 2 17.5z"/>
+          <path fill="none" stroke="#ea4335" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round" d="M3.5 6.5 12 13l8.5-6.5"/>
+          <path fill="#4285f4" d="M2 6.5v11A2.5 2.5 0 0 0 4.5 20H6V9.3z"/>
+          <path fill="#34a853" d="M22 6.5v11a2.5 2.5 0 0 1-2.5 2.5H18V9.3z"/>
+        </svg>
+        <span>Contact us</span>
+      </button>
+    </div>
   </div>
 
   <template v-else>
@@ -378,7 +449,7 @@ Vue.createApp({
   data() {
     return {
       token: localStorage.getItem('hrms_token'), me: null, tab: 'attendance', toast: { msg: '', err: false },
-      busy: 0, dialog: null, loginForm: { email: '', password: '' }, portal: null,
+      busy: 0, dialog: null, loginForm: { email: '', password: '' }, portal: null, showContact: false,
       portals: [{ id: 'employee', label: 'Employee' }, { id: 'manager', label: 'Manager' }, { id: 'hr', label: 'HR' }],
       today: { checked_in: false, since: null }, month: today0().slice(0, 7), records: [], attScope: 'mine', attEmployee: '', editing: null,
       employees: [], approvers: [], leaveTypes: [], balance: [], myLeave: [], leaveForm: this.blankLeave(),
